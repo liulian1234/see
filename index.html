@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Crash 云数据库系统 V2 + V3（分析+可视化版）</title>
+<title>Crash 云数据库系统 V4（完整分析+风控+可视化）</title>
 
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -32,7 +32,7 @@ button{
 }
 button:hover{background:#2563eb;}
 .row{display:flex;gap:10px;flex-wrap:wrap;}
-.box{flex:1;min-width:200px;background:#0f172a;padding:10px;border-radius:10px;}
+.box{flex:1;min-width:180px;background:#0f172a;padding:10px;border-radius:10px;}
 .small{font-size:12px;color:#9ca3af;}
 canvas{margin-top:10px;}
 </style>
@@ -41,8 +41,8 @@ canvas{margin-top:10px;}
 <body>
 <div class="container">
 
-<h2>📊 Crash 数据系统 V2 + V3（风控 + 可视化）</h2>
-<p class="small">✔ EV ✔ 波动率 ✔ 区间概率 ✔ 图表分析（不预测未来）</p>
+<h2>📊 Crash 数据系统 V4（完整风控+分析+可视化）</h2>
+<p class="small">✔ EV ✔ 波动率 ✔ 风险评分 ✔ 趋势图 ✔ 区间统计（仅分析，不预测）</p>
 
 <div class="card">
   <h3>⚙️ Cloud API</h3>
@@ -52,21 +52,22 @@ canvas{margin-top:10px;}
 <div class="card">
   <h3>📥 输入数据</h3>
   <input id="value" placeholder="输入倍率，例如 1.23" />
-  <button onclick="add()">添加</button>
+  <button onclick="add()">添加数据</button>
   <button onclick="load()">加载数据库</button>
 </div>
 
 <div class="card">
-  <h3>📊 V2 分析结果</h3>
+  <h3>📊 V4 风控指标</h3>
   <div class="row">
-    <div class="box" id="evBox">EV: -</div>
-    <div class="box" id="avgBox">AVG: -</div>
-    <div class="box" id="varBox">Variance: -</div>
+    <div class="box" id="evBox">EV</div>
+    <div class="box" id="avgBox">AVG</div>
+    <div class="box" id="varBox">Variance</div>
+    <div class="box" id="riskBox">Risk Score</div>
   </div>
 </div>
 
 <div class="card">
-  <h3>📈 V3 可视化</h3>
+  <h3>📈 V3/V4 可视化</h3>
   <canvas id="chart"></canvas>
 </div>
 
@@ -90,9 +91,13 @@ function analyze(){
   let ev=arr.reduce((a,b)=>a+(b-1)/n,0);
   let variance=arr.reduce((a,b)=>a+Math.pow(b-avg,2),0)/n;
 
+  // 风险评分（V4核心）
+  let risk = Math.min(100, Math.round(variance * 20 + (avg < 2 ? 30 : 10)));
+
   document.getElementById("evBox").innerText="EV: "+ev.toFixed(4);
   document.getElementById("avgBox").innerText="AVG: "+avg.toFixed(3);
   document.getElementById("varBox").innerText="Variance: "+variance.toFixed(3);
+  document.getElementById("riskBox").innerText="Risk: "+risk+"/100";
 
   let labels=arr.map((_,i)=>i+1);
 
@@ -147,13 +152,9 @@ async function load(){
 </body>
 </html>
 
-<!-- ================= BACKEND (UNCHANGED SAFE WORKER) =================
-Cloudflare Worker (same as V1, GitHub storage)
-
-功能：
-- /get 读取数据库
-- /add 添加数据
-- GitHub data.json 存储
-
-👉 不变原因：已经是安全结构
+<!-- ================= BACKEND =================
+Cloudflare Worker（不变）
+- /get 读取GitHub data.json
+- /add 写入数据
+- TOKEN保存在Cloudflare环境变量
 ================================================ -->
