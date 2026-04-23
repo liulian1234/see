@@ -1,160 +1,280 @@
 <!DOCTYPE html>
-<html lang="zh">
+<html>
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Crash 云数据库系统 V4（完整分析+风控+可视化）</title>
+<meta charset="UTF-8">
+<title>Crash Tracker V9</title>
 
-<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<!-- Excel库 -->
+<script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
 
 <style>
-body{
-  margin:0;
-  font-family:Arial;
-  background:linear-gradient(135deg,#0b1220,#111827);
-  color:#fff;
+body { background:#0b1220; color:white; font-family:Arial; padding:12px; }
+.card { background:#111827; padding:14px; border-radius:14px; margin-bottom:12px; }
+input, select {
+  width:100%; padding:10px; margin:6px 0;
+  border-radius:10px; border:none; background:#1f2937; color:white;
 }
-.container{max-width:1100px;margin:auto;padding:20px;}
-.card{
-  background:rgba(17,24,39,0.85);
-  border:1px solid #1f2937;
-  padding:15px;
-  border-radius:14px;
-  margin-top:15px;
-}
-input{
-  width:100%;padding:12px;margin-top:8px;border-radius:10px;border:none;
-}
-button{
-  margin-top:10px;padding:10px 14px;border:none;border-radius:10px;
-  cursor:pointer;background:#3b82f6;color:white;font-weight:bold;
-}
-button:hover{background:#2563eb;}
-.row{display:flex;gap:10px;flex-wrap:wrap;}
-.box{flex:1;min-width:180px;background:#0f172a;padding:10px;border-radius:10px;}
-.small{font-size:12px;color:#9ca3af;}
-canvas{margin-top:10px;}
+button { padding:12px; border:none; border-radius:10px; width:48%; margin:5px; font-weight:bold;}
+.win{background:#22c55e;} .lose{background:#ef4444;}
+.start{background:#3b82f6; width:100%;}
+.stat{background:#1f2937; padding:8px; margin:6px 0; border-radius:8px;}
 </style>
 </head>
 
 <body>
-<div class="container">
-
-<h2>📊 Crash 数据系统 V4（完整风控+分析+可视化）</h2>
-<p class="small">✔ EV ✔ 波动率 ✔ 风险评分 ✔ 趋势图 ✔ 区间统计（仅分析，不预测）</p>
 
 <div class="card">
-  <h3>⚙️ Cloud API</h3>
-  <input id="api" placeholder="https://your-worker.workers.dev" />
+<h2>🚀 启动</h2>
+
+<label>本金</label>
+<input id="startBalance" type="number">
+
+<label>目标</label>
+<input id="targetBalance" type="number">
+
+<label>模式</label>
+<select id="mode">
+  <option value="A">A 保守</option>
+  <option value="B">B 进攻</option>
+  <option value="C">C 高风险</option>
+  <option value="D">D 自动</option>
+</select>
+
+<button class="start" onclick="startSystem()">开始</button>
 </div>
 
 <div class="card">
-  <h3>📥 输入数据</h3>
-  <input id="value" placeholder="输入倍率，例如 1.23" />
-  <button onclick="add()">添加数据</button>
-  <button onclick="load()">加载数据库</button>
+<div class="stat">资金：$<span id="balance">0</span></div>
+<div class="stat">利润：$<span id="profit">0</span></div>
+<div class="stat">状态：<span id="status">未启动</span></div>
 </div>
 
 <div class="card">
-  <h3>📊 V4 风控指标</h3>
-  <div class="row">
-    <div class="box" id="evBox">EV</div>
-    <div class="box" id="avgBox">AVG</div>
-    <div class="box" id="varBox">Variance</div>
-    <div class="box" id="riskBox">Risk Score</div>
-  </div>
+<button class="win" onclick="addWin()">WIN</button>
+<button class="lose" onclick="addLose()">LOSE</button>
+<div class="stat">下注：$<span id="bet">0</span></div>
 </div>
 
 <div class="card">
-  <h3>📈 V3/V4 可视化</h3>
-  <canvas id="chart"></canvas>
+<div class="stat">局数：<span id="total">0</span></div>
+<div class="stat">胜率：<span id="rate">0%</span></div>
+<div class="stat">连输：<span id="loseStreak">0</span></div>
 </div>
 
 <div class="card">
-  <h3>📁 数据记录</h3>
-  <div id="list"></div>
+<h3>⏱️ 时间</h3>
+<div class="stat">开始：<span id="startTime">-</span></div>
+<div class="stat">时长：<span id="duration">00:00:00</span></div>
 </div>
 
+<div class="card">
+<button class="start" onclick="exportExcel()">📊 导出 Excel</button>
+<button class="start" onclick="analyze()">📈 分析</button>
+<div class="stat" id="report">暂无分析</div>
 </div>
 
 <script>
-let db=[];
-let chart=null;
 
+// ===== 数据 =====
+let balance=0, target=0, profit=0;
+let total=0, win=0, lose=0;
+let loseStreak=0, winStreak=0;
+let started=false, stopped=false;
+let mode="B";
+let risk=0.03;
+let logs=[];
+
+// 时间
+let startTimestamp=0;
+let timer=null;
+
+// ===== 启动 =====
+function startSystem(){
+
+  balance = parseFloat(startBalance.value);
+  target = parseFloat(targetBalance.value);
+  mode = document.getElementById("mode").value;
+
+  if(!balance || !target){
+    alert("输入完整");
+    return;
+  }
+
+  if(mode=="A") risk=0.02;
+  if(mode=="B") risk=0.03;
+  if(mode=="C") risk=0.05;
+
+  started=true;
+  stopped=false;
+
+  total=0; win=0; lose=0;
+  profit=0;
+  loseStreak=0; winStreak=0;
+  logs=[];
+
+  // 时间
+  startTimestamp=Date.now();
+  startTime.innerText=new Date().toLocaleTimeString();
+  if(timer) clearInterval(timer);
+  timer=setInterval(updateTimer,1000);
+
+  update();
+}
+
+// ===== 自动模式 =====
+function autoRisk(){
+  if(mode!="D") return;
+
+  if(loseStreak>=4) risk=0.01;
+  else if(loseStreak>=2) risk=0.02;
+  else if(winStreak>=3) risk=0.04;
+  else risk=0.03;
+}
+
+// ===== 下注 =====
+function bet(){
+  autoRisk();
+  return balance*risk;
+}
+
+// ===== WIN =====
+function addWin(){
+  if(!started||stopped) return;
+
+  let b=bet();
+  let gain=b*2;
+
+  balance+=gain;
+  profit+=gain;
+
+  win++; total++;
+  winStreak++; loseStreak=0;
+
+  logs.push({
+    局数:total,
+    结果:"WIN",
+    下注:b.toFixed(2),
+    盈亏:gain.toFixed(2),
+    余额:balance.toFixed(2)
+  });
+
+  check();
+  update();
+}
+
+// ===== LOSE =====
+function addLose(){
+  if(!started||stopped) return;
+
+  let b=bet();
+
+  balance-=b;
+  profit-=b;
+
+  lose++; total++;
+  loseStreak++; winStreak=0;
+
+  logs.push({
+    局数:total,
+    结果:"LOSE",
+    下注:b.toFixed(2),
+    盈亏:(-b).toFixed(2),
+    余额:balance.toFixed(2)
+  });
+
+  check();
+  update();
+}
+
+// ===== 风控 =====
+function check(){
+  if(balance>=target){
+    stopped=true;
+    status.innerText="达标";
+  }
+  if(balance<=0){
+    stopped=true;
+    status.innerText="爆仓";
+  }
+}
+
+// ===== 时间 =====
+function updateTimer(){
+  let diff=Math.floor((Date.now()-startTimestamp)/1000);
+  let h=String(Math.floor(diff/3600)).padStart(2,'0');
+  let m=String(Math.floor((diff%3600)/60)).padStart(2,'0');
+  let s=String(diff%60).padStart(2,'0');
+  duration.innerText=`${h}:${m}:${s}`;
+}
+
+// ===== 导出Excel =====
+function exportExcel(){
+
+  if(!started){
+    alert("还没开始");
+    return;
+  }
+
+  let ws = XLSX.utils.json_to_sheet(logs);
+  let wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "Logs");
+
+  XLSX.writeFile(wb, "crash_logs.xlsx");
+}
+
+// ===== 分析 =====
 function analyze(){
-  let arr=db.map(x=>x.value);
-  let n=arr.length;
-  if(n===0)return;
 
-  let avg=arr.reduce((a,b)=>a+b,0)/n;
-  let ev=arr.reduce((a,b)=>a+(b-1)/n,0);
-  let variance=arr.reduce((a,b)=>a+Math.pow(b-avg,2),0)/n;
+  if(!started){
+    alert("还没开始");
+    return;
+  }
 
-  // 风险评分（V4核心）
-  let risk = Math.min(100, Math.round(variance * 20 + (avg < 2 ? 30 : 10)));
+  let text="";
 
-  document.getElementById("evBox").innerText="EV: "+ev.toFixed(4);
-  document.getElementById("avgBox").innerText="AVG: "+avg.toFixed(3);
-  document.getElementById("varBox").innerText="Variance: "+variance.toFixed(3);
-  document.getElementById("riskBox").innerText="Risk: "+risk+"/100";
+  if(profit>0) text+="✅ 盈利\n";
+  else text+="❌ 亏损\n";
 
-  let labels=arr.map((_,i)=>i+1);
+  let rate=total?(win/total*100):0;
 
-  if(chart)chart.destroy();
+  if(rate<40) text+="⚠️ 胜率低\n";
+  if(loseStreak>=3) text+="❌ 连输问题严重\n";
+  if(mode=="C") text+="⚠️ 风险过高\n";
+  if(mode=="D") text+="✅ 自动模式较稳\n";
 
-  chart=new Chart(document.getElementById("chart"),{
-    type:"line",
-    data:{
-      labels:labels,
-      datasets:[{
-        label:"倍率走势",
-        data:arr,
-        borderColor:"#3b82f6",
-        fill:false
-      }]
-    }
-  });
+  text+="\n结论：";
+
+  if(profit<0 && loseStreak>=3){
+    text+="连输未控制";
+  }else if(mode=="C"){
+    text+="模式过激";
+  }else{
+    text+="随机波动";
+  }
+
+  report.innerText=text;
 }
 
-function render(){
-  document.getElementById("list").innerHTML=db.map((d,i)=>
-    `<div> #${i+1} | ${d.value} | ${d.time}</div>`
-  ).join("");
+// ===== UI =====
+function update(){
+
+  balanceSpan = document.getElementById("balance");
+  balanceSpan.innerText=balance.toFixed(2);
+
+  profitSpan=document.getElementById("profit");
+  profitSpan.innerText=profit.toFixed(2);
+
+  totalSpan=document.getElementById("total");
+  totalSpan.innerText=total;
+
+  let rate=total?(win/total*100):0;
+  document.getElementById("rate").innerText=rate.toFixed(1)+"%";
+
+  document.getElementById("loseStreak").innerText=loseStreak;
+  document.getElementById("bet").innerText=bet().toFixed(2);
 }
 
-async function add(){
-  let v=parseFloat(document.getElementById("value").value);
-  if(isNaN(v))return;
-
-  let api=document.getElementById("api").value;
-
-  let res=await fetch(api+"/add",{
-    method:"POST",
-    headers:{"Content-Type":"application/json"},
-    body:JSON.stringify({value:v})
-  });
-
-  db=await res.json();
-  render();
-  analyze();
-}
-
-async function load(){
-  let api=document.getElementById("api").value;
-  let res=await fetch(api+"/get");
-  db=await res.json();
-  render();
-  analyze();
-}
 </script>
 
 </body>
 </html>
-
-<!-- ================= BACKEND =================
-Cloudflare Worker（不变）
-- /get 读取GitHub data.json
-- /add 写入数据
-- TOKEN保存在Cloudflare环境变量
-================================================ -->
