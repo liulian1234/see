@@ -3,9 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Crash 数据系统（GitHub Excel 云数据库版）</title>
-
-<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<title>Crash 云数据库系统（安全无Token版）</title>
 
 <style>
 body{
@@ -19,18 +17,12 @@ body{
   margin:auto;
   padding:20px;
 }
-.header{
-  font-size:22px;
-  font-weight:bold;
-  margin-bottom:10px;
-}
 .card{
   background:rgba(17,24,39,0.85);
   border:1px solid #1f2937;
   padding:15px;
   border-radius:14px;
   margin-top:15px;
-  box-shadow:0 10px 30px rgba(0,0,0,0.3);
 }
 input{
   width:100%;
@@ -38,7 +30,6 @@ input{
   margin-top:8px;
   border-radius:10px;
   border:none;
-  outline:none;
 }
 button{
   margin-top:10px;
@@ -69,25 +60,23 @@ button:hover{background:#2563eb;}
 <body>
 <div class="container">
 
-<div class="header">📊 Crash GitHub Excel 数据库系统</div>
-<p class="small">数据永久存储在 GitHub Excel（data.xlsx），自动同步跨设备</p>
+<h2>📊 Crash 云数据库系统（安全版）</h2>
+<p class="small">✔ 无Token暴露 ✔ 云端同步 ✔ GitHub数据库 ✔ 多设备同步</p>
 
 <div class="card">
-  <h3>⚙️ GitHub 配置</h3>
-  <input id="repo" placeholder="GitHub repo: username/repo" />
-  <input id="file" value="data.xlsx" placeholder="Excel 文件名（默认 data.xlsx）" />
-  <input id="token" placeholder="GitHub Token（repo 权限）" />
+  <h3>⚙️ 云端配置</h3>
+  <input id="api" placeholder="Cloud Worker API URL（例如 https://xxx.workers.dev）" />
 </div>
 
 <div class="card">
-  <h3>📥 输入每一局数据</h3>
+  <h3>📥 输入每局数据</h3>
   <input id="value" placeholder="输入倍率，例如 1.23" />
-  <button onclick="addValue()">添加并保存</button>
-  <button onclick="loadFromGitHub()">读取数据库</button>
+  <button onclick="addValue()">添加记录</button>
+  <button onclick="loadData()">加载云数据库</button>
 </div>
 
 <div class="card">
-  <h3>📁 数据库记录</h3>
+  <h3>📁 数据记录</h3>
   <div id="list" class="list"></div>
 </div>
 
@@ -95,89 +84,118 @@ button:hover{background:#2563eb;}
 
 <script>
 let db = [];
-let sha = null;
 
 function render(){
-  let html = "";
-  db.forEach((d,i)=>{
-    html += `<div class='item'><span>#${i+1} 倍率: ${d.value}</span><span>${d.time}</span></div>`;
-  });
-  document.getElementById("list").innerHTML = html;
-}
-
-function toWorkbook(){
-  let ws = XLSX.utils.json_to_sheet(db);
-  let wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, "data");
-  return wb;
-}
-
-function wbToBase64(wb){
-  let bin = XLSX.write(wb,{bookType:"xlsx",type:"array"});
-  let blob = new Blob([bin]);
-  return new Promise(res=>{
-    let reader = new FileReader();
-    reader.onload = ()=>res(reader.result.split(",")[1]);
-    reader.readAsDataURL(blob);
-  });
+  document.getElementById("list").innerHTML = db.map((d,i)=>
+    `<div class='item'><span>#${i+1} ${d.value}</span><span>${d.time}</span></div>`
+  ).join("");
 }
 
 async function addValue(){
   let v = parseFloat(document.getElementById("value").value);
   if(isNaN(v)) return alert("请输入数字");
 
-  db.push({value:v,time:new Date().toISOString()});
+  let api = document.getElementById("api").value;
+
+  let res = await fetch(api + "/add",{
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({value:v})
+  });
+
+  let data = await res.json();
+  db = data;
   render();
-  await saveToGitHub();
 }
 
-async function loadFromGitHub(){
-  let repo=document.getElementById("repo").value;
-  let file=document.getElementById("file").value;
+async function loadData(){
+  let api = document.getElementById("api").value;
 
-  let url=`https://raw.githubusercontent.com/${repo}/main/${file}`;
-
-  try{
-    let res = await fetch(url);
-    let buf = await res.arrayBuffer();
-    let wb = XLSX.read(buf,{type:"array"});
-    let json = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
-
-    db = json;
-    render();
-  }catch(e){
-    db = [];
-    render();
-  }
-}
-
-async function saveToGitHub(){
-  let repo=document.getElementById("repo").value;
-  let file=document.getElementById("file").value;
-  let token=document.getElementById("token").value;
-
-  if(!repo||!file||!token) return alert("请填写GitHub信息");
-
-  let url=`https://api.github.com/repos/${repo}/contents/${file}`;
-
-  let res = await fetch(url,{headers:{Authorization:`token ${token}`}});
-  let shaLocal = null;
-
-  if(res.ok){
-    let json = await res.json();
-    shaLocal = json.sha;
-  }
-
-  let wb = toWorkbook();
-  let base64 = await wbToBase64(wb);
-
-  await fetch(url,{method:"PUT",headers:{"Authorization":`token ${token}`},body:JSON.stringify({
-    message:"update excel data",
-    content:base64,
-    sha:shaLocal
-  })});
+  let res = await fetch(api + "/get");
+  db = await res.json();
+  render();
 }
 </script>
 
 </body>
 </html>
+
+<!-- ================= CLOUD WORKER (GitHub Secure Backend) =================
+
+你需要部署这个 Worker（Cloudflare Workers）
+
+功能：
+- GitHub token 存在 server（不会暴露）
+- index.html 只调用 API
+- 数据存储 GitHub data.json
+
+================= worker.js =================
+
+export default {
+  async fetch(req, env) {
+
+    const url = new URL(req.url);
+
+    const GITHUB_REPO = env.REPO;
+    const GITHUB_TOKEN = env.TOKEN;
+    const FILE = "data.json";
+
+    async function getData(){
+      let r = await fetch(
+        `https://api.github.com/repos/${GITHUB_REPO}/contents/${FILE}`,
+        {headers:{Authorization:`token ${GITHUB_TOKEN}`}}
+      );
+
+      if(!r.ok) return [];
+
+      let j = await r.json();
+      return JSON.parse(atob(j.content));
+    }
+
+    async function saveData(data, sha){
+      let content = btoa(JSON.stringify(data,null,2));
+
+      await fetch(
+        `https://api.github.com/repos/${GITHUB_REPO}/contents/${FILE}`,
+        {
+          method:"PUT",
+          headers:{
+            "Authorization":`token ${GITHUB_TOKEN}`,
+            "Content-Type":"application/json"
+          },
+          body:JSON.stringify({
+            message:"update data",
+            content,
+            sha
+          })
+        }
+      );
+    }
+
+    if(url.pathname=="/get"){
+      return Response.json(await getData());
+    }
+
+    if(url.pathname=="/add"){
+      let body = await req.json();
+      let data = await getData();
+
+      data.push({
+        value: body.value,
+        time: new Date().toISOString()
+      });
+
+      await saveData(data);
+
+      return Response.json(data);
+    }
+
+    return new Response("OK");
+  }
+}
+
+================= ENV VARIABLES =================
+REPO = username/repo
+TOKEN = github_token
+
+================================================ -->
