@@ -3,21 +3,65 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Crash 数据系统（GitHub数据库版）</title>
+<title>Crash 数据系统（GitHub Excel 云数据库版）</title>
+
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 
 <style>
-body {
-  font-family: Arial;
-  background:#0b1220;
-  color:#fff;
+body{
   margin:0;
+  font-family:Arial;
+  background:linear-gradient(135deg,#0b1220,#111827);
+  color:#fff;
+}
+.container{
+  max-width:1000px;
+  margin:auto;
   padding:20px;
 }
-.container{max-width:1000px;margin:auto;}
-textarea{width:100%;height:120px;border-radius:10px;padding:10px;}
-input{width:100%;padding:10px;border-radius:8px;margin-top:8px;}
-button{margin-top:8px;padding:10px;border:none;border-radius:8px;background:#3b82f6;color:white;cursor:pointer;}
-.card{background:#111827;padding:15px;margin-top:15px;border-radius:12px;}
+.header{
+  font-size:22px;
+  font-weight:bold;
+  margin-bottom:10px;
+}
+.card{
+  background:rgba(17,24,39,0.85);
+  border:1px solid #1f2937;
+  padding:15px;
+  border-radius:14px;
+  margin-top:15px;
+  box-shadow:0 10px 30px rgba(0,0,0,0.3);
+}
+input{
+  width:100%;
+  padding:12px;
+  margin-top:8px;
+  border-radius:10px;
+  border:none;
+  outline:none;
+}
+button{
+  margin-top:10px;
+  padding:10px 14px;
+  border:none;
+  border-radius:10px;
+  cursor:pointer;
+  background:#3b82f6;
+  color:white;
+  font-weight:bold;
+}
+button:hover{background:#2563eb;}
+.list{
+  margin-top:10px;
+  max-height:300px;
+  overflow:auto;
+}
+.item{
+  padding:8px;
+  border-bottom:1px solid #2d3748;
+  display:flex;
+  justify-content:space-between;
+}
 .small{font-size:12px;color:#9ca3af;}
 </style>
 </head>
@@ -25,48 +69,89 @@ button{margin-top:8px;padding:10px;border:none;border-radius:8px;background:#3b8
 <body>
 <div class="container">
 
-<h2>📊 Crash GitHub 数据库系统</h2>
-<p class="small">仅用于统计分析：频率 / EV / 波动结构（不预测结果）</p>
+<div class="header">📊 Crash GitHub Excel 数据库系统</div>
+<p class="small">数据永久存储在 GitHub Excel（data.xlsx），自动同步跨设备</p>
 
-<h3>⚙️ GitHub 配置</h3>
-<input id="repo" placeholder="GitHub repo: username/repo" />
-<input id="file" placeholder="文件路径: data.json" />
-<input id="token" placeholder="GitHub Token (需要repo权限)" />
+<div class="card">
+  <h3>⚙️ GitHub 配置</h3>
+  <input id="repo" placeholder="GitHub repo: username/repo" />
+  <input id="file" value="data.xlsx" placeholder="Excel 文件名（默认 data.xlsx）" />
+  <input id="token" placeholder="GitHub Token（repo 权限）" />
+</div>
 
-<h3>📥 输入数据</h3>
-<textarea id="inputData" placeholder="输入倍率，用逗号分隔"></textarea>
+<div class="card">
+  <h3>📥 输入每一局数据</h3>
+  <input id="value" placeholder="输入倍率，例如 1.23" />
+  <button onclick="addValue()">添加并保存</button>
+  <button onclick="loadFromGitHub()">读取数据库</button>
+</div>
 
-<button onclick="analyze()">分析</button>
-<button onclick="saveGitHub()">保存到GitHub数据库</button>
-<button onclick="loadGitHub()">从GitHub加载数据库</button>
-
-<div id="output"></div>
-<div id="history"></div>
+<div class="card">
+  <h3>📁 数据库记录</h3>
+  <div id="list" class="list"></div>
+</div>
 
 </div>
 
 <script>
 let db = [];
+let sha = null;
 
-function analyze(){
-  let arr = document.getElementById("inputData").value.split(",")
-  .map(x=>parseFloat(x.trim())).filter(x=>!isNaN(x));
-
-  let avg = arr.reduce((a,b)=>a+b,0)/arr.length;
-  let ev = arr.reduce((a,b)=>a+(b-1)/arr.length,0);
-
-  db.push({data:arr,avg,ev,time:new Date().toISOString()});
-
-  document.getElementById("output").innerHTML =
-  `<div class='card'>
-    <h3>📊 本次分析</h3>
-    <p>数量: ${arr.length}</p>
-    <p>平均: ${avg.toFixed(3)}</p>
-    <p>EV: ${ev.toFixed(4)}</p>
-  </div>`;
+function render(){
+  let html = "";
+  db.forEach((d,i)=>{
+    html += `<div class='item'><span>#${i+1} 倍率: ${d.value}</span><span>${d.time}</span></div>`;
+  });
+  document.getElementById("list").innerHTML = html;
 }
 
-async function saveGitHub(){
+function toWorkbook(){
+  let ws = XLSX.utils.json_to_sheet(db);
+  let wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "data");
+  return wb;
+}
+
+function wbToBase64(wb){
+  let bin = XLSX.write(wb,{bookType:"xlsx",type:"array"});
+  let blob = new Blob([bin]);
+  return new Promise(res=>{
+    let reader = new FileReader();
+    reader.onload = ()=>res(reader.result.split(",")[1]);
+    reader.readAsDataURL(blob);
+  });
+}
+
+async function addValue(){
+  let v = parseFloat(document.getElementById("value").value);
+  if(isNaN(v)) return alert("请输入数字");
+
+  db.push({value:v,time:new Date().toISOString()});
+  render();
+  await saveToGitHub();
+}
+
+async function loadFromGitHub(){
+  let repo=document.getElementById("repo").value;
+  let file=document.getElementById("file").value;
+
+  let url=`https://raw.githubusercontent.com/${repo}/main/${file}`;
+
+  try{
+    let res = await fetch(url);
+    let buf = await res.arrayBuffer();
+    let wb = XLSX.read(buf,{type:"array"});
+    let json = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
+
+    db = json;
+    render();
+  }catch(e){
+    db = [];
+    render();
+  }
+}
+
+async function saveToGitHub(){
   let repo=document.getElementById("repo").value;
   let file=document.getElementById("file").value;
   let token=document.getElementById("token").value;
@@ -75,49 +160,22 @@ async function saveGitHub(){
 
   let url=`https://api.github.com/repos/${repo}/contents/${file}`;
 
-  let getRes=await fetch(url,{headers:{Authorization:`token ${token}`}});
-  let sha=null;
-  let oldData=[];
+  let res = await fetch(url,{headers:{Authorization:`token ${token}`}});
+  let shaLocal = null;
 
-  if(getRes.ok){
-    let json=await getRes.json();
-    sha=json.sha;
-    oldData=JSON.parse(atob(json.content));
+  if(res.ok){
+    let json = await res.json();
+    shaLocal = json.sha;
   }
 
-  let newData=oldData.concat(db);
-  let content=btoa(unescape(encodeURIComponent(JSON.stringify(newData,null,2))));
+  let wb = toWorkbook();
+  let base64 = await wbToBase64(wb);
 
-  await fetch(url,{
-    method:"PUT",
-    headers:{
-      "Authorization":`token ${token}`,
-      "Content-Type":"application/json"
-    },
-    body:JSON.stringify({
-      message:"update crash data",
-      content:content,
-      sha:sha
-    })
-  });
-
-  alert("已保存到GitHub");
-}
-
-async function loadGitHub(){
-  let repo=document.getElementById("repo").value;
-  let file=document.getElementById("file").value;
-
-  let url=`https://raw.githubusercontent.com/${repo}/main/${file}`;
-
-  let res=await fetch(url);
-  let data=await res.json();
-
-  db=data;
-
-  document.getElementById("history").innerHTML=
-  `<div class='card'><h3>📁 GitHub 数据</h3>
-  <p>记录数: ${db.length}</p></div>`;
+  await fetch(url,{method:"PUT",headers:{"Authorization":`token ${token}`},body:JSON.stringify({
+    message:"update excel data",
+    content:base64,
+    sha:shaLocal
+  })});
 }
 </script>
 
