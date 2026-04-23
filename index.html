@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Crash 概率分析器（数学模型版）</title>
+<style>
+body {
+  font-family: Arial, sans-serif;
+  background:#0b1220;
+  color:#fff;
+  margin:0;
+  padding:20px;
+}
+.container {
+  max-width:900px;
+  margin:auto;
+}
+textarea {
+  width:100%;
+  height:120px;
+  border-radius:10px;
+  padding:10px;
+  border:none;
+}
+button {
+  margin-top:10px;
+  padding:10px 15px;
+  border:none;
+  border-radius:8px;
+  cursor:pointer;
+  background:#3b82f6;
+  color:white;
+}
+.card {
+  background:#111827;
+  padding:15px;
+  margin-top:15px;
+  border-radius:12px;
+}
+table {
+  width:100%;
+  border-collapse: collapse;
+  margin-top:10px;
+}
+td, th {
+  border-bottom:1px solid #333;
+  padding:8px;
+  text-align:left;
+}
+.small {
+  color:#9ca3af;
+  font-size:13px;
+}
+</style>
+</head>
+<body>
+<div class="container">
+
+<h2>🎲 Crash 概率分析器（数学模型版）</h2>
+<p class="small">仅用于统计分析：频率分布 / 期望值 / 波动结构，不涉及预测下一局结果。</p>
+
+<textarea id="inputData" placeholder="输入倍率，用逗号分隔，例如：1.2, 1.5, 2.3, 5.6..."></textarea>
+<button onclick="analyze()">分析数据</button>
+
+<div id="output"></div>
+
+</div>
+
+<script>
+function analyze() {
+  let raw = document.getElementById("inputData").value;
+  let arr = raw.split(",").map(x => parseFloat(x.trim())).filter(x => !isNaN(x));
+
+  if(arr.length === 0){
+    document.getElementById("output").innerHTML = "<div class='card'>请输入有效数据</div>";
+    return;
+  }
+
+  let n = arr.length;
+
+  let range = {
+    "1.0 - 2.0x": 0,
+    "2.0 - 5.0x": 0,
+    "5.0 - 10.0x": 0,
+    "10.0x+": 0
+  };
+
+  let sum = 0;
+
+  arr.forEach(x => {
+    sum += x;
+    if(x < 2) range["1.0 - 2.0x"]++;
+    else if(x < 5) range["2.0 - 5.0x"]++;
+    else if(x < 10) range["5.0 - 10.0x"]++;
+    else range["10.0x+"]++;
+  });
+
+  let avg = sum / n;
+
+  let html = `<div class='card'>
+    <h3>📊 基础统计</h3>
+    <p>数据数量：${n}</p>
+    <p>平均倍率：${avg.toFixed(3)}</p>
+  </div>`;
+
+  html += `<div class='card'>
+    <h3>📉 倍率分布（经验频率）</h3>
+    <table>
+      <tr><th>区间</th><th>次数</th><th>比例</th></tr>`;
+
+  for(let key in range){
+    let pct = (range[key] / n * 100).toFixed(2);
+    html += `<tr><td>${key}</td><td>${range[key]}</td><td>${pct}%</td></tr>`;
+  }
+
+  html += `</table></div>`;
+
+  // EV simple model (pure math, no prediction)
+  let ev = 0;
+  arr.forEach(x => {
+    let p = 1/n;
+    ev += p * (x - 1);
+  });
+
+  html += `<div class='card'>
+    <h3>📈 期望值（EV 模型）</h3>
+    <p>EV = ${ev.toFixed(4)}</p>
+    <p class='small'>说明：EV > 0 表示历史样本下为正收益结构，EV < 0 表示负收益结构（仅统计，不代表未来）</p>
+  </div>`;
+
+  document.getElementById("output").innerHTML = html;
+}
+</script>
+
+</body>
+</html>
