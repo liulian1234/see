@@ -3,7 +3,10 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Crash 云数据库系统（安全无Token版）</title>
+<title>Crash 云数据库系统 V2 + V3（分析+可视化版）</title>
+
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
 <style>
 body{
@@ -12,11 +15,7 @@ body{
   background:linear-gradient(135deg,#0b1220,#111827);
   color:#fff;
 }
-.container{
-  max-width:1000px;
-  margin:auto;
-  padding:20px;
-}
+.container{max-width:1100px;margin:auto;padding:20px;}
 .card{
   background:rgba(17,24,39,0.85);
   border:1px solid #1f2937;
@@ -25,177 +24,136 @@ body{
   margin-top:15px;
 }
 input{
-  width:100%;
-  padding:12px;
-  margin-top:8px;
-  border-radius:10px;
-  border:none;
+  width:100%;padding:12px;margin-top:8px;border-radius:10px;border:none;
 }
 button{
-  margin-top:10px;
-  padding:10px 14px;
-  border:none;
-  border-radius:10px;
-  cursor:pointer;
-  background:#3b82f6;
-  color:white;
-  font-weight:bold;
+  margin-top:10px;padding:10px 14px;border:none;border-radius:10px;
+  cursor:pointer;background:#3b82f6;color:white;font-weight:bold;
 }
 button:hover{background:#2563eb;}
-.list{
-  margin-top:10px;
-  max-height:300px;
-  overflow:auto;
-}
-.item{
-  padding:8px;
-  border-bottom:1px solid #2d3748;
-  display:flex;
-  justify-content:space-between;
-}
+.row{display:flex;gap:10px;flex-wrap:wrap;}
+.box{flex:1;min-width:200px;background:#0f172a;padding:10px;border-radius:10px;}
 .small{font-size:12px;color:#9ca3af;}
+canvas{margin-top:10px;}
 </style>
 </head>
 
 <body>
 <div class="container">
 
-<h2>📊 Crash 云数据库系统（安全版）</h2>
-<p class="small">✔ 无Token暴露 ✔ 云端同步 ✔ GitHub数据库 ✔ 多设备同步</p>
+<h2>📊 Crash 数据系统 V2 + V3（风控 + 可视化）</h2>
+<p class="small">✔ EV ✔ 波动率 ✔ 区间概率 ✔ 图表分析（不预测未来）</p>
 
 <div class="card">
-  <h3>⚙️ 云端配置</h3>
-  <input id="api" placeholder="Cloud Worker API URL（例如 https://xxx.workers.dev）" />
+  <h3>⚙️ Cloud API</h3>
+  <input id="api" placeholder="https://your-worker.workers.dev" />
 </div>
 
 <div class="card">
-  <h3>📥 输入每局数据</h3>
+  <h3>📥 输入数据</h3>
   <input id="value" placeholder="输入倍率，例如 1.23" />
-  <button onclick="addValue()">添加记录</button>
-  <button onclick="loadData()">加载云数据库</button>
+  <button onclick="add()">添加</button>
+  <button onclick="load()">加载数据库</button>
+</div>
+
+<div class="card">
+  <h3>📊 V2 分析结果</h3>
+  <div class="row">
+    <div class="box" id="evBox">EV: -</div>
+    <div class="box" id="avgBox">AVG: -</div>
+    <div class="box" id="varBox">Variance: -</div>
+  </div>
+</div>
+
+<div class="card">
+  <h3>📈 V3 可视化</h3>
+  <canvas id="chart"></canvas>
 </div>
 
 <div class="card">
   <h3>📁 数据记录</h3>
-  <div id="list" class="list"></div>
+  <div id="list"></div>
 </div>
 
 </div>
 
 <script>
-let db = [];
+let db=[];
+let chart=null;
+
+function analyze(){
+  let arr=db.map(x=>x.value);
+  let n=arr.length;
+  if(n===0)return;
+
+  let avg=arr.reduce((a,b)=>a+b,0)/n;
+  let ev=arr.reduce((a,b)=>a+(b-1)/n,0);
+  let variance=arr.reduce((a,b)=>a+Math.pow(b-avg,2),0)/n;
+
+  document.getElementById("evBox").innerText="EV: "+ev.toFixed(4);
+  document.getElementById("avgBox").innerText="AVG: "+avg.toFixed(3);
+  document.getElementById("varBox").innerText="Variance: "+variance.toFixed(3);
+
+  let labels=arr.map((_,i)=>i+1);
+
+  if(chart)chart.destroy();
+
+  chart=new Chart(document.getElementById("chart"),{
+    type:"line",
+    data:{
+      labels:labels,
+      datasets:[{
+        label:"倍率走势",
+        data:arr,
+        borderColor:"#3b82f6",
+        fill:false
+      }]
+    }
+  });
+}
 
 function render(){
-  document.getElementById("list").innerHTML = db.map((d,i)=>
-    `<div class='item'><span>#${i+1} ${d.value}</span><span>${d.time}</span></div>`
+  document.getElementById("list").innerHTML=db.map((d,i)=>
+    `<div> #${i+1} | ${d.value} | ${d.time}</div>`
   ).join("");
 }
 
-async function addValue(){
-  let v = parseFloat(document.getElementById("value").value);
-  if(isNaN(v)) return alert("请输入数字");
+async function add(){
+  let v=parseFloat(document.getElementById("value").value);
+  if(isNaN(v))return;
 
-  let api = document.getElementById("api").value;
+  let api=document.getElementById("api").value;
 
-  let res = await fetch(api + "/add",{
+  let res=await fetch(api+"/add",{
     method:"POST",
     headers:{"Content-Type":"application/json"},
     body:JSON.stringify({value:v})
   });
 
-  let data = await res.json();
-  db = data;
+  db=await res.json();
   render();
+  analyze();
 }
 
-async function loadData(){
-  let api = document.getElementById("api").value;
-
-  let res = await fetch(api + "/get");
-  db = await res.json();
+async function load(){
+  let api=document.getElementById("api").value;
+  let res=await fetch(api+"/get");
+  db=await res.json();
   render();
+  analyze();
 }
 </script>
 
 </body>
 </html>
 
-<!-- ================= CLOUD WORKER (GitHub Secure Backend) =================
-
-你需要部署这个 Worker（Cloudflare Workers）
+<!-- ================= BACKEND (UNCHANGED SAFE WORKER) =================
+Cloudflare Worker (same as V1, GitHub storage)
 
 功能：
-- GitHub token 存在 server（不会暴露）
-- index.html 只调用 API
-- 数据存储 GitHub data.json
+- /get 读取数据库
+- /add 添加数据
+- GitHub data.json 存储
 
-================= worker.js =================
-
-export default {
-  async fetch(req, env) {
-
-    const url = new URL(req.url);
-
-    const GITHUB_REPO = env.REPO;
-    const GITHUB_TOKEN = env.TOKEN;
-    const FILE = "data.json";
-
-    async function getData(){
-      let r = await fetch(
-        `https://api.github.com/repos/${GITHUB_REPO}/contents/${FILE}`,
-        {headers:{Authorization:`token ${GITHUB_TOKEN}`}}
-      );
-
-      if(!r.ok) return [];
-
-      let j = await r.json();
-      return JSON.parse(atob(j.content));
-    }
-
-    async function saveData(data, sha){
-      let content = btoa(JSON.stringify(data,null,2));
-
-      await fetch(
-        `https://api.github.com/repos/${GITHUB_REPO}/contents/${FILE}`,
-        {
-          method:"PUT",
-          headers:{
-            "Authorization":`token ${GITHUB_TOKEN}`,
-            "Content-Type":"application/json"
-          },
-          body:JSON.stringify({
-            message:"update data",
-            content,
-            sha
-          })
-        }
-      );
-    }
-
-    if(url.pathname=="/get"){
-      return Response.json(await getData());
-    }
-
-    if(url.pathname=="/add"){
-      let body = await req.json();
-      let data = await getData();
-
-      data.push({
-        value: body.value,
-        time: new Date().toISOString()
-      });
-
-      await saveData(data);
-
-      return Response.json(data);
-    }
-
-    return new Response("OK");
-  }
-}
-
-================= ENV VARIABLES =================
-REPO = username/repo
-TOKEN = github_token
-
+👉 不变原因：已经是安全结构
 ================================================ -->
